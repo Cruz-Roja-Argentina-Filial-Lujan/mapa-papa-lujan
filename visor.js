@@ -100,7 +100,7 @@ function installOverlay(){if(!map||!ready)return false;
  if(!map.getLayer('crafl-points'))map.addLayer({id:'crafl-points',source:sourceId,type:'symbol',filter:['==',typ,'Point'],layout:{'icon-image':['get','symbol'],'icon-offset':['case',['==',['get','symbol'],'crafl-taxi'],['literal',[36,0]],['literal',[0,0]]],'icon-size':['interpolate',['linear'],['zoom'],10,.62,13,.88,16,1.1],'icon-allow-overlap':true,'icon-ignore-placement':true}});
  overlay=true;return true;
 }
-function syncMap(){if(!ready||!map)return;try{if(installOverlay()){map.getSource(sourceId).setData({type:'FeatureCollection',features:normalizedFeatures()});document.getElementById('mapnotice').textContent=nowSelected()>=instant('2026-11-12','00:00')?'12/11: los elementos grises tienen continuidad sin confirmar.':feed.features.length && !feed.changes.length ? 'Solo referencias geográficas. Todavía no hay horarios publicados.' : feed.features.length?`Tocá un punto, línea o zona.`:'Sin ubicaciones habilitadas para mostrar.';}}catch(e){document.getElementById('mapnotice').textContent='Error al representar datos: '+e.message;console.error(e)}}
+function syncMap(){if(!ready||!map)return;try{if(installOverlay()){map.getSource(sourceId).setData({type:'FeatureCollection',features:normalizedFeatures()});document.getElementById('mapnotice').textContent=nowSelected()>=instant('2026-11-12','00:00')?'12/11: los elementos grises tienen continuidad sin confirmar.':feed.features.length && !feed.changes.length ? 'Solo referencias geográficas. Todavía no hay horarios publicados.' : feed.features.length?`Tocá un punto, línea o zona.`:'Sin ubicaciones habilitadas para mostrar.';}}catch(e){document.getElementById('mapnotice').textContent='No se pudo mostrar la información en el mapa. Probá Actualizar.';console.error(e)}}
 const guidePanel=document.getElementById('guidePanel');
 const days=document.getElementById('guideDays');
 const dayLabel=new Intl.DateTimeFormat('es-AR',{weekday:'long',day:'numeric',month:'long',timeZone:'America/Argentina/Buenos_Aires'});
@@ -155,7 +155,7 @@ function drawGuide(){
  const notices=dateNotices(day).map(c=>{const f=byId.get(String(c.feature));return f?'<article class="guideCard '+category(f)+'"><h4>'+esc(f.properties.name)+'</h4><p>'+esc(c.state)+'</p><small>Fecha anunciada: '+esc(c.date.slice(8))+'/'+esc(c.date.slice(5,7))+'. Sin hora exacta publicada.</small></article>':'';}).join('');
  const info=feed.features.filter(f=>!f.geometry&&!feed.changes.some(c=>String(c.feature)===String(f.properties.id))).map(f=>'<article class="guideCard '+category(f)+'"><h4>'+esc(f.properties.name)+'</h4><p>'+esc(f.properties.description)+'</p></article>').join('');
  const scheduled=section('Cambios del día',today,false)+(earlier.length?'<section class="continuing">'+section(start>=instant('2026-11-12','00:00')?'Últimos estados publicados · continuidad sin confirmar':'Continúa de días anteriores',earlier,true)+'</section>':'');
- document.getElementById('guideContent').innerHTML=!loadedGuide?'Consultando la planilla…':continuityNotice(start)+(scheduled||(!notices?clearNotice('para este día'):'<p>No hay otros cambios con hora exacta publicados para este día.</p>'))+(notices?'<h3>Avisos por fecha, sin hora exacta publicada</h3>'+notices:'');
+ document.getElementById('guideContent').innerHTML=!loadedGuide?'Cargando información…':continuityNotice(start)+(scheduled||(!notices?clearNotice('para este día'):'<p>No hay otros cambios con hora exacta publicados para este día.</p>'))+(notices?'<h3>Avisos por fecha, sin hora exacta publicada</h3>'+notices:'');
  const general=document.getElementById('generalContent');if(general.dataset.content!==info){general.innerHTML=info;general.dataset.content=info;}document.getElementById('generalInfo').hidden=!info;
 }
 
@@ -182,10 +182,7 @@ function render(){
  document.querySelectorAll('[data-moment]').forEach(b=>b.setAttribute('aria-pressed',String(day===b.dataset.moment.slice(0,10))));
  const active=[];let visible=0;
  for(const f of feed.features){const state=getState(f,t);if(!filter(category(f)))continue;if(shownAt(f,state))visible++;if(state)active.push({f,state});}
- document.getElementById('measures').textContent=active.length;
- document.getElementById('measures').nextElementSibling.textContent=day>='2026-11-12'?'estados sin confirmar':'medidas vigentes';
  document.getElementById('events').previousElementSibling.textContent=day>='2026-11-12'?'Últimos estados publicados':'Medidas y servicios a esta hora';
- document.getElementById('locations').textContent=visible;
  const els=document.getElementById('events');
  els.innerHTML=active.length?active.sort((a,b)=>a.f.properties.name.localeCompare(b.f.properties.name,'es')).map(({f,state})=>'<'+(f.geometry?'button':'div')+' class="entry'+(continuityUnknown(state,t)?' uncertain':'')+'"'+(f.geometry?' data-id="'+esc(f.properties.id)+'"':'')+'><b>'+esc(f.properties.name)+'</b><span>'+esc(state.state)+' · desde '+esc(state.date)+' '+esc(state.time)+'</span></'+(f.geometry?'button':'div')+'>').join(''):(loadedGuide?clearNotice('para esta fecha y hora'):'<div class="empty">Consultando la información…</div>');
  els.insertAdjacentHTML('afterbegin',continuityNotice(t));
@@ -200,7 +197,7 @@ function onClick(e){const feature=e.features?.[0];if(!feature)return;const f=ind
 function bboxOf(features){let bb=[Infinity,Infinity,-Infinity,-Infinity];const walk=c=>{if(!Array.isArray(c))return;if(typeof c[0]==='number'&&typeof c[1]==='number'){bb[0]=Math.min(bb[0],c[0]);bb[1]=Math.min(bb[1],c[1]);bb[2]=Math.max(bb[2],c[0]);bb[3]=Math.max(bb[3],c[1]);}else for(const x of c)walk(x)};features.forEach(f=>walk(f.geometry?.coordinates));return bb.every(Number.isFinite)?bb:null}
 function fitAll(){if(!map||!ready||!feed.features.length)return;const b=bboxOf(feed.features);if(b)map.fitBounds([[b[0],b[1]],[b[2],b[3]]],{padding:48,maxZoom:13,duration:500})}
 function focus(id){if(!ready||!map)return;const f=index().get(String(id));if(!f)return;const b=bboxOf([f]);if(b){if(b[0]===b[2]&&b[1]===b[3])map.flyTo({center:[b[0],b[1]],zoom:14,duration:400});else map.fitBounds([[b[0],b[1]],[b[2],b[3]]],{padding:50,maxZoom:14,duration:400});const center=[(b[0]+b[2])/2,(b[1]+b[3])/2];detail(f,center)}}
-function setup(){if(typeof maplibregl==='undefined'){document.getElementById('mapnotice').textContent='No cargó el motor cartográfico. Revisá tu conexión.';return}map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:[-59.119,-34.561],zoom:13.4,attributionControl:true});map.addControl(new maplibregl.NavigationControl(),'top-right');map.on('load',()=>{ready=true;syncMap();});map.on('style.load',()=>{ready=true;syncMap()});map.on('error',e=>{console.warn('Error cartográfico',e?.error||e)});layerIds.forEach(id=>{map.on('click',id,onClick);map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>map.resize()).observe(document.querySelector('.mapbox'));window.addEventListener('resize',()=>map.resize());}
+function setup(){if(typeof maplibregl==='undefined'){document.getElementById('mapnotice').textContent='No se pudo cargar el mapa. Revisá tu conexión.';return}map=new maplibregl.Map({container:'map',style:'https://tiles.openfreemap.org/styles/liberty',center:[-59.119,-34.561],zoom:13.4,attributionControl:true});map.addControl(new maplibregl.NavigationControl(),'top-right');map.on('load',()=>{ready=true;syncMap();});map.on('style.load',()=>{ready=true;syncMap()});map.on('error',e=>{console.warn('Error cartográfico',e?.error||e)});layerIds.forEach(id=>{map.on('click',id,onClick);map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>map.resize()).observe(document.querySelector('.mapbox'));window.addEventListener('resize',()=>map.resize());}
 function normalizeWholeDays(changes){
  return changes.map(original=>{
   const c={...original};
@@ -209,7 +206,7 @@ function normalizeWholeDays(changes){
   return c;
  });
 }
-function receive(data){if(!data||!Array.isArray(data.features)||!Array.isArray(data.changes))throw Error('Datos inesperados');/* Apps Script returns objects from another frame. Recreate the GeoJSON in this frame for MapLibre workers. */ feed=JSON.parse(JSON.stringify(data));feed.changes=normalizeWholeDays(feed.changes);loadedGuide=true;document.getElementById('loadStatus').textContent=feed.mode==='test'?`Simulación: ${feed.features.length} ubicaciones`:``;document.getElementById('updated').textContent='Consulta de información: '+momentfmt.format(new Date())+' (hora argentina).';render();}
+function receive(data){if(!data||!Array.isArray(data.features)||!Array.isArray(data.changes))throw Error('La información recibida no está disponible.');/* Apps Script returns objects from another frame. Recreate the GeoJSON in this frame for MapLibre workers. */ feed=JSON.parse(JSON.stringify(data));feed.changes=normalizeWholeDays(feed.changes);loadedGuide=true;document.getElementById('loadStatus').textContent=feed.mode==='test'?`Simulación: ${feed.features.length} ubicaciones`:``;document.getElementById('updated').textContent='Consulta de información: '+momentfmt.format(new Date())+' (hora argentina).';render();}
 let pendingPublicRequest=null;
 function load(){
  if(pendingPublicRequest)return;
@@ -217,7 +214,7 @@ function load(){
  const script=document.createElement('script');let timer;
  function cleanup(){clearTimeout(timer);script.remove();pendingPublicRequest=null;window.craflReceiveData=()=>{};}
  window.craflReceiveData=data=>{cleanup();try{if(data?.error)throw Error(data.error);receive(data)}catch(error){status.textContent='No se pudo actualizar. '+(loadedGuide?'Se conserva la última consulta. ':'')+error.message}};
- script.onerror=()=>{cleanup();status.textContent='No se pudo conectar con la planilla. '+(loadedGuide?'Se conserva la última consulta.':'Probá Actualizar.');};
+ script.onerror=()=>{cleanup();status.textContent='No se pudo actualizar la información. '+(loadedGuide?'Se conserva la última consulta.':'Probá Actualizar.');};
  timer=setTimeout(()=>{cleanup();status.textContent='La consulta tardó demasiado. Probá Actualizar.';},30000);
  pendingPublicRequest=script;script.src='https://script.google.com/macros/s/AKfycbytuf2FDVj3yo55B_Uacbj_APKuLDzChSu_ESRnXTBb3xk3_1pyzmw83LXI7jF1HLA9/exec?action=public-data&t='+Date.now();document.head.appendChild(script);
 }
@@ -233,7 +230,7 @@ function startMapOnce(){
  if(mapBootstrapDone)return;
  if(typeof maplibregl==='undefined'){mapBootstrapFailed();return}
  try {setup();mapBootstrapDone=true;}
- catch(e){console.error('Error al inicializar el mapa:',e);document.getElementById('mapnotice').textContent='Error al iniciar el mapa: '+e.message;}
+ catch(e){console.error('Error al inicializar el mapa:',e);document.getElementById('mapnotice').textContent='No se pudo iniciar el mapa. Probá Actualizar.';}
 }
 function loadMapEngine(){
 
