@@ -47,7 +47,7 @@ function symbolFor(f){
  if(n.includes('taxis'))return 'taxi';
  if(n.includes('venta de productos'))return 'shop';
  if(n.includes('estacionamiento'))return 'parking';
- if(/escenario|misas/.test(n))return 'event';
+ if(/escenario|misas?/.test(n))return 'event';
  return 'site';
 }
 function registerSymbols(){
@@ -110,13 +110,28 @@ for(let t=inicio;t<=fin;t+=86400000){
  btn.textContent=dayLabel.format(t).slice(0,3).toUpperCase()+' '+Number(day.slice(8));btn.dataset.day=day;btn.setAttribute('aria-label',dayLabel.format(t));
  btn.onclick=()=>{slider.value=(t-inicio)/step;render();guidePanel.scrollTop=0};days.append(btn);
 }
-function setView(guide){
+const recommendationsPanel=document.getElementById('recommendationsPanel');
+let recommendationsScroll=0;
+function setView(view){
+ if(typeof view==='boolean')view=view?'guide':'map';
  if(!guidePanel.hidden)guideScroll=guidePanel.scrollTop;
- document.body.classList.toggle('readGuide',guide);guidePanel.hidden=!guide;
- document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.view==='guide')===guide)));
- if(guide){drawGuide();guidePanel.scrollTop=guideScroll}else{map?.resize()}
+ if(!recommendationsPanel.hidden)recommendationsScroll=recommendationsPanel.scrollTop;
+ document.body.classList.toggle('readGuide',view==='guide');
+ document.body.classList.toggle('readRecommendations',view==='recommendations');
+ guidePanel.hidden=view!=='guide';recommendationsPanel.hidden=view!=='recommendations';
+ document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
+ activePopup?.remove();activePopup=null;document.getElementById('mapDetail').hidden=true;
+ if(view==='guide'){drawGuide();guidePanel.scrollTop=guideScroll}
+ else if(view==='recommendations'){drawGeneralInfo();recommendationsPanel.scrollTop=recommendationsScroll}
+ else map?.resize();
 }
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view==='guide'));
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+function drawGeneralInfo(){
+ const info=feed.features.filter(f=>!f.geometry&&!feed.changes.some(c=>String(c.feature)===String(f.properties.id))).map(f=>'<article class="guideCard"><h4>'+esc(f.properties.name)+'</h4><p>'+esc(f.properties.description)+'</p>'+sourceLink(f.properties.sourceUrl)+'</article>').join('');
+ const general=document.getElementById('generalContent');
+ if(general.dataset.content!==info){general.innerHTML=info;general.dataset.content=info;}
+ document.getElementById('generalInfo').hidden=!info;
+}
 function clearNotice(period){
  return '<div class="clearNotice"><strong>Sin restricciones programadas</strong><p>El cronograma de la filial no registra cortes '+period+'.</p></div>';
 }
@@ -153,10 +168,8 @@ function drawGuide(){
   return '<h3>'+title+'</h3>'+Array.from(groups,([k,v])=>'<article class="guideCard '+tones.get(k)+'"><h4>'+esc(k)+'</h4>'+v.join('')+'</article>').join('');
  }
  const notices=dateNotices(day).map(c=>{const f=byId.get(String(c.feature));return f?'<article class="guideCard '+category(f)+'"><h4>'+esc(f.properties.name)+'</h4><p>'+esc(c.state)+'</p><small>Fecha anunciada: '+esc(c.date.slice(8))+'/'+esc(c.date.slice(5,7))+'. Sin hora exacta publicada.</small></article>':'';}).join('');
- const info=feed.features.filter(f=>!f.geometry&&!feed.changes.some(c=>String(c.feature)===String(f.properties.id))).map(f=>'<article class="guideCard '+category(f)+'"><h4>'+esc(f.properties.name)+'</h4><p>'+esc(f.properties.description)+'</p></article>').join('');
  const scheduled=section('Cambios del día',today,false)+(earlier.length?'<section class="continuing">'+section(start>=instant('2026-11-12','00:00')?'Últimos estados publicados · continuidad sin confirmar':'Continúa de días anteriores',earlier,true)+'</section>':'');
  document.getElementById('guideContent').innerHTML=!loadedGuide?'Cargando información…':continuityNotice(start)+(scheduled||(!notices?clearNotice('para este día'):'<p>No hay otros cambios con hora exacta publicados para este día.</p>'))+(notices?'<h3>Avisos por fecha, sin hora exacta publicada</h3>'+notices:'');
- const general=document.getElementById('generalContent');if(general.dataset.content!==info){general.innerHTML=info;general.dataset.content=info;}document.getElementById('generalInfo').hidden=!info;
 }
 
 guidePanel.onclick=e=>{
@@ -175,7 +188,7 @@ function detail(f,center){
 
 function render(){
  activePopup?.remove();activePopup=null;
- document.getElementById('mapDetail').hidden=true;drawGuide();
+ document.getElementById('mapDetail').hidden=true;drawGuide();drawGeneralInfo();
  slider.style.setProperty('--progress',(100*(slider.value-slider.min)/(slider.max-slider.min))+'%');
  const t=nowSelected(),day=inputfmt.format(new Date(t)).slice(0,10);
  document.getElementById('moment').textContent=momentfmt.format(new Date(t));
