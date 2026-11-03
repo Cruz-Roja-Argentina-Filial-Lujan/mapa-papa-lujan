@@ -144,6 +144,8 @@ function dateNotices(day){
  }
  return [...latest.values()];
 }
+const sectorReferences={'IM-044':'IM-003','IM-046':'IM-049'};
+function mapReference(f){return f.geometry?String(f.properties.id):sectorReferences[f.properties.id]||''}
 function sourceLink(url){const href=cleanURL(url);return href?'<a class="link" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">Consultar fuente municipal</a>':'';}
 function drawGuide(){
  if(guidePanel.hidden)return;
@@ -161,7 +163,7 @@ function drawGuide(){
    const label=/puente/i.test(f.properties.name)?'Puentes sobre el río Luján':f.properties.layer;
    const group=(prior?'':c.time+' h · ')+label;
    tones.set(group,/puente/i.test(label)?'bridges':category(f));if(!groups.has(group))groups.set(group,[]);
-   const jump=f.geometry?' <button class="guideLink" data-place="'+esc(c.feature)+'" data-at="'+(prior?start:instant(c.date,c.time))+'">Ver en el mapa</button>':'';
+   const target=mapReference(f);const jump=target?' <button class="guideLink" data-place="'+esc(target)+'" data-at="'+(prior?start:instant(c.date,c.time))+'">'+(f.geometry?'Ver en el mapa':'Ver sector en el mapa')+'</button>':'';
    groups.get(group).push('<p><b>'+esc(f.properties.name)+'</b> · '+esc(c.state)+(prior?' <small>desde el '+esc(c.date.slice(8))+'/'+esc(c.date.slice(5,7))+'</small>':'')+jump+'</p>');
    if(f.properties.description)groups.get(group).push('<details><summary>Detalle y fuente municipal</summary><p>'+esc(f.properties.description)+'</p>'+sourceLink(c.sourceUrl||f.properties.sourceUrl)+'</details>');
   }
@@ -197,7 +199,7 @@ function render(){
  for(const f of feed.features){const state=getState(f,t);if(!filter(category(f)))continue;if(shownAt(f,state))visible++;if(state)active.push({f,state});}
  document.getElementById('events').previousElementSibling.textContent=day>='2026-11-12'?'Últimos estados publicados':'Medidas y servicios a esta hora';
  const els=document.getElementById('events');
- els.innerHTML=active.length?active.sort((a,b)=>a.f.properties.name.localeCompare(b.f.properties.name,'es')).map(({f,state})=>'<'+(f.geometry?'button':'div')+' class="entry'+(continuityUnknown(state,t)?' uncertain':'')+'"'+(f.geometry?' data-id="'+esc(f.properties.id)+'"':'')+'><b>'+esc(f.properties.name)+'</b><span>'+esc(state.state)+' · desde '+esc(state.date)+' '+esc(state.time)+'</span></'+(f.geometry?'button':'div')+'>').join(''):(loadedGuide?clearNotice('para esta fecha y hora'):'<div class="empty">Consultando la información…</div>');
+ els.innerHTML=active.length?active.sort((a,b)=>a.f.properties.name.localeCompare(b.f.properties.name,'es')).map(({f,state})=>'<'+(mapReference(f)?'button':'div')+' class="entry'+(continuityUnknown(state,t)?' uncertain':'')+'"'+(mapReference(f)?' data-id="'+esc(mapReference(f))+'"':'')+'><b>'+esc(f.properties.name)+'</b><span>'+esc(state.state)+' · desde '+esc(state.date)+' '+esc(state.time)+'</span></'+(mapReference(f)?'button':'div')+'>').join(''):(loadedGuide?clearNotice('para esta fecha y hora'):'<div class="empty">Consultando la información…</div>');
  els.insertAdjacentHTML('afterbegin',continuityNotice(t));
  const notices=dateNotices(day).filter(c=>{const f=index().get(String(c.feature));return f&&filter(category(f));});
  if(notices.length)els.innerHTML+='<div class="info">Hay '+notices.length+' avisos por fecha sin hora exacta publicada. Consultalos en Guía por día.</div>';
@@ -205,7 +207,8 @@ function render(){
  syncMap();
 }
 
-function popupHTML(f){const state=getState(f,nowSelected());const p=f.properties;const href=cleanURL(state?state.sourceUrl:p.sourceUrl);let val=`<h3>${esc(p.name)}</h3><span class="tag">${esc(state?state.state:'Referencia geográfica')}</span>`;if(continuityUnknown(state))val+='<p><b>Continuidad sin confirmar para esta fecha.</b> Este es el último estado publicado por el municipio.</p>';if(state)val+='<p>Anunciado desde el '+esc(state.date.slice(8))+'/'+esc(state.date.slice(5,7))+' a las '+esc(state.time)+' h</p>';if(p.description)val+=`<p>${esc(p.description)}</p>`;if(href&&!/^https?:\/\/(www\.)?cruzroja\.org\.ar\/?$/i.test(href))val+=`<p><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Consultar fuente</a></p>`;return val;}
+function relatedNotices(f){return Object.entries(sectorReferences).filter(([,target])=>target===String(f.properties.id)).map(([id])=>{const related=index().get(id),state=related&&getState(related,nowSelected());if(!state)return '';return '<div class="relatedNotice"><h4>'+esc(related.properties.name)+'</h4><p>'+esc(state.state)+'</p><p>'+esc(related.properties.description)+'</p>'+sourceLink(state.sourceUrl||related.properties.sourceUrl)+'</div>'}).join('')}
+function popupHTML(f){const state=getState(f,nowSelected());const p=f.properties;const href=cleanURL(state?state.sourceUrl:p.sourceUrl);let val=`<h3>${esc(p.name)}</h3><span class="tag">${esc(state?state.state:'Referencia geográfica')}</span>`;if(continuityUnknown(state))val+='<p><b>Continuidad sin confirmar para esta fecha.</b> Este es el último estado publicado por el municipio.</p>';if(state)val+='<p>Anunciado desde el '+esc(state.date.slice(8))+'/'+esc(state.date.slice(5,7))+' a las '+esc(state.time)+' h</p>';if(p.description)val+=`<p>${esc(p.description)}</p>`;if(href&&!/^https?:\/\/(www\.)?cruzroja\.org\.ar\/?$/i.test(href))val+=`<p><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Consultar fuente</a></p>`;return val+relatedNotices(f);}
 function onClick(e){const feature=e.features?.[0];if(!feature)return;const f=index().get(String(feature.properties?.id));if(!f)return;detail(f,e.lngLat)}
 function bboxOf(features){let bb=[Infinity,Infinity,-Infinity,-Infinity];const walk=c=>{if(!Array.isArray(c))return;if(typeof c[0]==='number'&&typeof c[1]==='number'){bb[0]=Math.min(bb[0],c[0]);bb[1]=Math.min(bb[1],c[1]);bb[2]=Math.max(bb[2],c[0]);bb[3]=Math.max(bb[3],c[1]);}else for(const x of c)walk(x)};features.forEach(f=>walk(f.geometry?.coordinates));return bb.every(Number.isFinite)?bb:null}
 function fitAll(){if(!map||!ready||!feed.features.length)return;const b=bboxOf(feed.features);if(b)map.fitBounds([[b[0],b[1]],[b[2],b[3]]],{padding:48,maxZoom:13,duration:500})}
