@@ -15,8 +15,9 @@ const index=()=>new Map(feed.features.map(f=>[String(f.properties.id),f]));
 function instant(date,time){if(!/^\d{4}-\d\d-\d\d$/.test(String(date))||!/^\d\d:\d\d$/.test(String(time)))return NaN;return Date.parse(date+'T'+time+':00-03:00')}
 function nowSelected(){return inicio+Number(slider.value)*step}
 function getState(f,t){const list=feed.changes.filter(c=>String(c.feature)===String(f.properties.id)&&Number.isFinite(instant(c.date,c.time))&&instant(c.date,c.time)<=t).sort((a,b)=>instant(a.date,a.time)-instant(b.date,b.time));const last=list.at(-1);if(!last)return null;const selectedDay=inputfmt.format(new Date(t)).slice(0,10);if(feed.changes.some(c=>String(c.feature)===String(f.properties.id)&&!c.time&&c.date>=last.date&&c.date<=selectedDay))return null;if(last.endDate&&last.endTime){const stop=instant(last.endDate,last.endTime);if(Number.isFinite(stop)&&t>=stop)return null}return last}
-function continuityUnknown(state,t=nowSelected()){return !!state&&!state.endDate&&t>=instant('2026-11-12','00:00')}
-function continuityNotice(t=nowSelected()){return t>=instant('2026-11-12','00:00')?'<div class="continuityNotice"><b>Jueves 12: continuidad sin confirmar</b><p>El municipio no publicó una fecha de finalización para varias medidas del operativo. Los elementos grises muestran el último estado anunciado; no confirman que el corte o servicio especial siga vigente, ni que haya finalizado. Consultá los canales municipales antes de circular.</p></div>':''}
+function startOnlyAnnouncement(state){return /inicio anunciado; vigencia posterior no confirmada/i.test(state?.condition||'')}
+function continuityUnknown(state,t=nowSelected()){return !!state&&!state.endDate&&(t>=instant('2026-11-12','00:00')||(startOnlyAnnouncement(state)&&inputfmt.format(new Date(t)).slice(0,10)>state.date))}
+function continuityNotice(t=nowSelected()){return t>=instant('2026-11-12','00:00')?'<div class="continuityNotice"><b>Jueves 12: continuidad sin confirmar</b><p>Las fuentes oficiales no publicaron una fecha de finalización para varias medidas del operativo. Los elementos grises muestran el último estado anunciado; no confirman que el corte o servicio especial siga vigente, ni que haya finalizado. Consultá los canales oficiales antes de circular.</p></div>':''}
 function filter(cat){return document.querySelector('[data-cat="'+cat+'"]')?.checked!==false}
 
 // Each entry supplies the name, colour and 24-unit pictogram used by both map and key.
@@ -146,14 +147,15 @@ function dateNotices(day){
 }
 const sectorReferences={'IM-044':'IM-003','IM-046':'IM-049'};
 function mapReference(f){return f.geometry?String(f.properties.id):sectorReferences[f.properties.id]||''}
-function sourceLink(url){const href=cleanURL(url);return href?'<a class="link" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">Consultar fuente municipal</a>':'';}
+function sourceLink(url){const href=cleanURL(url);return href?'<a class="link" href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">Consultar fuente</a>':'';}
 function drawGuide(){
  if(guidePanel.hidden)return;
  const day=inputfmt.format(new Date(nowSelected())).slice(0,10),start=instant(day,'00:00'),byId=index();
  document.getElementById('guideTitle').textContent=dayLabel.format(start);
  for(const b of days.children)b.setAttribute('aria-pressed',String(b.dataset.day===day));
  const today=feed.changes.filter(c=>c.date===day&&c.time).sort((a,b)=>a.time.localeCompare(b.time));
- const earlier=feed.features.map(f=>getState(f,start)).filter(c=>c&&c.date<day);
+ const previous=feed.features.map(f=>getState(f,start)).filter(c=>c&&c.date<day);
+ const earlier=previous.filter(c=>!continuityUnknown(c,start)),uncertain=previous.filter(c=>continuityUnknown(c,start));
  function section(title,rows,prior){
   if(!rows.length)return '';
   const groups=new Map(),tones=new Map();
@@ -165,12 +167,12 @@ function drawGuide(){
    tones.set(group,/puente/i.test(label)?'bridges':category(f));if(!groups.has(group))groups.set(group,[]);
    const target=mapReference(f);const jump=target?' <button class="guideLink" data-place="'+esc(target)+'" data-at="'+(prior?start:instant(c.date,c.time))+'">'+(f.geometry?'Ver en el mapa':'Ver sector en el mapa')+'</button>':'';
    groups.get(group).push('<p><b>'+esc(f.properties.name)+'</b> · '+esc(c.state)+(prior?' <small>desde el '+esc(c.date.slice(8))+'/'+esc(c.date.slice(5,7))+'</small>':'')+jump+'</p>');
-   if(f.properties.description)groups.get(group).push('<details><summary>Detalle y fuente municipal</summary><p>'+esc(f.properties.description)+'</p>'+sourceLink(c.sourceUrl||f.properties.sourceUrl)+'</details>');
+   if(f.properties.description)groups.get(group).push('<details><summary>Detalle y fuente</summary><p>'+esc(f.properties.description)+'</p>'+sourceLink(c.sourceUrl||f.properties.sourceUrl)+'</details>');
   }
   return '<h3>'+title+'</h3>'+Array.from(groups,([k,v])=>'<article class="guideCard '+tones.get(k)+'"><h4>'+esc(k)+'</h4>'+v.join('')+'</article>').join('');
  }
  const notices=dateNotices(day).map(c=>{const f=byId.get(String(c.feature));return f?'<article class="guideCard '+category(f)+'"><h4>'+esc(f.properties.name)+'</h4><p>'+esc(c.state)+'</p><small>Fecha anunciada: '+esc(c.date.slice(8))+'/'+esc(c.date.slice(5,7))+'. Sin hora exacta publicada.</small></article>':'';}).join('');
- const scheduled=section('Cambios del día',today,false)+(earlier.length?'<section class="continuing">'+section(start>=instant('2026-11-12','00:00')?'Últimos estados publicados · continuidad sin confirmar':'Continúa de días anteriores',earlier,true)+'</section>':'');
+ const scheduled=section('Cambios del día',today,false)+(earlier.length?'<section class="continuing">'+section('Continúa de días anteriores',earlier,true)+'</section>':'')+(uncertain.length?'<section class="continuing"><p>Estos anuncios no tienen finalización publicada. No confirman que la medida o actividad siga vigente en este día.</p>'+section('Anuncios anteriores · continuidad sin confirmar',uncertain,true)+'</section>':'');
  document.getElementById('guideContent').innerHTML=!loadedGuide?'Cargando información…':continuityNotice(start)+(scheduled||(!notices?clearNotice('para este día'):'<p>No hay otros cambios con hora exacta publicados para este día.</p>'))+(notices?'<h3>Avisos por fecha, sin hora exacta publicada</h3>'+notices:'');
 }
 
@@ -199,7 +201,7 @@ function render(){
  for(const f of feed.features){const state=getState(f,t);if(!filter(category(f)))continue;if(shownAt(f,state))visible++;if(state)active.push({f,state});}
  document.getElementById('events').previousElementSibling.textContent=day>='2026-11-12'?'Últimos estados publicados':'Medidas y servicios a esta hora';
  const els=document.getElementById('events');
- els.innerHTML=active.length?active.sort((a,b)=>a.f.properties.name.localeCompare(b.f.properties.name,'es')).map(({f,state})=>'<'+(mapReference(f)?'button':'div')+' class="entry'+(continuityUnknown(state,t)?' uncertain':'')+'"'+(mapReference(f)?' data-id="'+esc(mapReference(f))+'"':'')+'><b>'+esc(f.properties.name)+'</b><span>'+esc(state.state)+' · desde '+esc(state.date)+' '+esc(state.time)+'</span></'+(mapReference(f)?'button':'div')+'>').join(''):(loadedGuide?clearNotice('para esta fecha y hora'):'<div class="empty">Consultando la información…</div>');
+ els.innerHTML=active.length?active.sort((a,b)=>a.f.properties.name.localeCompare(b.f.properties.name,'es')).map(({f,state})=>'<'+(mapReference(f)?'button':'div')+' class="entry'+(continuityUnknown(state,t)?' uncertain':'')+'"'+(mapReference(f)?' data-id="'+esc(mapReference(f))+'"':'')+'><b>'+esc(f.properties.name)+'</b><span>'+esc(state.state)+(continuityUnknown(state,t)?' · inicio anunciado el ':' · desde ')+esc(state.date)+' '+esc(state.time)+'</span>'+(continuityUnknown(state,t)?'<small>Sin finalización publicada. Continuidad sin confirmar.</small>':'')+(!mapReference(f)?sourceLink(state.sourceUrl||f.properties.sourceUrl):'')+'</'+(mapReference(f)?'button':'div')+'>').join(''):(loadedGuide?clearNotice('para esta fecha y hora'):'<div class="empty">Consultando la información…</div>');
  els.insertAdjacentHTML('afterbegin',continuityNotice(t));
  const notices=dateNotices(day).filter(c=>{const f=index().get(String(c.feature));return f&&filter(category(f));});
  if(notices.length)els.innerHTML+='<div class="info">Hay '+notices.length+' avisos por fecha sin hora exacta publicada. Consultalos en Guía por día.</div>';
@@ -208,7 +210,7 @@ function render(){
 }
 
 function relatedNotices(f){return Object.entries(sectorReferences).filter(([,target])=>target===String(f.properties.id)).map(([id])=>{const related=index().get(id),state=related&&getState(related,nowSelected());if(!state)return '';return '<div class="relatedNotice"><h4>'+esc(related.properties.name)+'</h4><p>'+esc(state.state)+'</p><p>'+esc(related.properties.description)+'</p>'+sourceLink(state.sourceUrl||related.properties.sourceUrl)+'</div>'}).join('')}
-function popupHTML(f){const state=getState(f,nowSelected());const p=f.properties;const href=cleanURL(state?state.sourceUrl:p.sourceUrl);let val=`<h3>${esc(p.name)}</h3><span class="tag">${esc(state?state.state:'Referencia geográfica')}</span>`;if(continuityUnknown(state))val+='<p><b>Continuidad sin confirmar para esta fecha.</b> Este es el último estado publicado por el municipio.</p>';if(state)val+='<p>Anunciado desde el '+esc(state.date.slice(8))+'/'+esc(state.date.slice(5,7))+' a las '+esc(state.time)+' h</p>';if(p.description)val+=`<p>${esc(p.description)}</p>`;if(href&&!/^https?:\/\/(www\.)?cruzroja\.org\.ar\/?$/i.test(href))val+=`<p><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Consultar fuente</a></p>`;return val+relatedNotices(f);}
+function popupHTML(f){const state=getState(f,nowSelected());const p=f.properties;const href=cleanURL(state?state.sourceUrl:p.sourceUrl);let val=`<h3>${esc(p.name)}</h3><span class="tag">${esc(state?state.state:'Referencia geográfica')}</span>`;if(continuityUnknown(state))val+='<p><b>Continuidad sin confirmar para esta fecha.</b> Este es el último estado publicado por las fuentes oficiales.</p>';if(state)val+='<p>Anunciado desde el '+esc(state.date.slice(8))+'/'+esc(state.date.slice(5,7))+' a las '+esc(state.time)+' h</p>';if(p.description)val+=`<p>${esc(p.description)}</p>`;if(href&&!/^https?:\/\/(www\.)?cruzroja\.org\.ar\/?$/i.test(href))val+=`<p><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">Consultar fuente</a></p>`;return val+relatedNotices(f);}
 let hoveredFeatureId=null;
 function onMapHover(e){
  if(!ready||!matchMedia('(hover: hover) and (pointer: fine)').matches||matchMedia('(max-width:800px)').matches||e.originalEvent?.buttons)return;
